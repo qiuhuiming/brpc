@@ -317,6 +317,40 @@ public:
         start_execute(node);
         return 0;
     }
+
+    int execute(T&& task) {
+        return execute(std::move(task), NULL, NULL);
+    }
+
+    int execute(T&& task,
+                const TaskOptions* options, TaskHandle* handle) {
+        if (stopped()) {
+            return EINVAL;
+        }
+        TaskNode* node = allocate_node();
+        if (BAIDU_UNLIKELY(node == NULL)) {
+            return ENOMEM;
+        }
+        void* const mem = allocator::allocate(node);
+        if (BAIDU_UNLIKELY(!mem)) {
+            return_task_node(node);
+            return ENOMEM;
+        }
+        new (mem) T(std::move(task));
+        node->stop_task = false;
+        TaskOptions opt;
+        if (options) {
+            opt = *options;
+        }
+        node->high_priority = opt.high_priority;
+        node->in_place = opt.in_place_if_possible;
+        if (handle) {
+            handle->node = node;
+            handle->version = node->version;
+        }
+        start_execute(node);
+        return 0;
+    }
 };
 
 inline ExecutionQueueOptions::ExecutionQueueOptions()
@@ -360,6 +394,33 @@ inline int execution_queue_execute(ExecutionQueueId<T> id,
         ptr = ExecutionQueue<T>::address(id);
     if (ptr != NULL) {
         return ptr->execute(task, options, handle);
+    } else {
+        return EINVAL;
+    }
+}
+
+template <typename T>
+inline int execution_queue_execute(ExecutionQueueId<T> id, 
+                       T&& task) {
+    return execution_queue_execute(id, task, NULL);
+}
+
+template <typename T>
+inline int execution_queue_execute(ExecutionQueueId<T> id, 
+                       T&& task,
+                       const TaskOptions* options) {
+    return execution_queue_execute(id, std::move(task), options, NULL);
+}
+
+template <typename T>
+inline int execution_queue_execute(ExecutionQueueId<T> id, 
+                       T&& task,
+                       const TaskOptions* options,
+                       TaskHandle* handle) {
+    typename ExecutionQueue<T>::scoped_ptr_t 
+        ptr = ExecutionQueue<T>::address(id);
+    if (ptr != NULL) {
+        return ptr->execute(std::move(task), options, handle);
     } else {
         return EINVAL;
     }
