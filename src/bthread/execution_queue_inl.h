@@ -400,20 +400,20 @@ inline int execution_queue_execute(ExecutionQueueId<T> id,
 }
 
 template <typename T>
-inline int execution_queue_execute(ExecutionQueueId<T> id, 
+inline int execution_queue_execute(ExecutionQueueId<T> id,
                        T&& task) {
-    return execution_queue_execute(id, task, NULL);
+    return execution_queue_execute(id, std::move(task), NULL);
 }
 
 template <typename T>
-inline int execution_queue_execute(ExecutionQueueId<T> id, 
+inline int execution_queue_execute(ExecutionQueueId<T> id,
                        T&& task,
                        const TaskOptions* options) {
     return execution_queue_execute(id, std::move(task), options, NULL);
 }
 
 template <typename T>
-inline int execution_queue_execute(ExecutionQueueId<T> id, 
+inline int execution_queue_execute(ExecutionQueueId<T> id,
                        T&& task,
                        const TaskOptions* options,
                        TaskHandle* handle) {

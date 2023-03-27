@@ -20,6 +20,7 @@
 #include <bthread/execution_queue.h>
 #include <bthread/sys_futex.h>
 #include <bthread/countdown_event.h>
+#include <memory>
 #include "butil/time.h"
 #include "butil/fast_rand.h"
 #include "butil/gperftools_profiler.h"
@@ -36,6 +37,7 @@ protected:
 struct LongIntTask {
     long value;
     bthread::CountdownEvent* event;
+
     LongIntTask(long v)
         : value(v), event(NULL)
     {}
@@ -55,6 +57,25 @@ int add(void* meta, bthread::TaskIterator<LongIntTask> &iter) {
     return 0;
 }
 
+struct LongIntTaskRValueOnly {
+    std::unique_ptr<int> value_;
+
+    LongIntTaskRValueOnly(const LongIntTaskRValueOnly&) = delete;
+
+    LongIntTaskRValueOnly(LongIntTaskRValueOnly&& other): value_(std::move(other.value_)) {}
+
+    LongIntTaskRValueOnly(const int value): value_(std::unique_ptr<int>(new int(value))) {}
+};
+
+int add(void* meta, bthread::TaskIterator<LongIntTaskRValueOnly> &iter) {
+    stopped = iter.is_queue_stopped();
+    int64_t* result = (int64_t*)meta;
+    for (; iter; ++iter) {
+        *result += *(iter->value_);
+    }
+    return 0;
+}
+
 TEST_F(ExecutionQueueTest, single_thread) {
     int64_t result = 0;
     int64_t expected_result = 0;
@@ -70,6 +91,26 @@ TEST_F(ExecutionQueueTest, single_thread) {
     LOG(INFO) << "stop";
     ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
     ASSERT_NE(0, bthread::execution_queue_execute(queue_id, 0));
+    ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
+    ASSERT_EQ(expected_result, result);
+    ASSERT_TRUE(stopped);
+}
+
+TEST_F(ExecutionQueueTest, single_thread_rvalue) {
+    int64_t result = 0;
+    int64_t expected_result = 0;
+    stopped = false;
+    bthread::ExecutionQueueId<LongIntTaskRValueOnly> queue_id;
+    bthread::ExecutionQueueOptions options;
+    ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
+                                                    add, &result));
+    for (int i = 0; i < 100; ++i) {
+        expected_result += i;
+        ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, {i}));
+    }
+    LOG(INFO) << "stop";
+    ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
+    ASSERT_NE(0, bthread::execution_queue_execute(queue_id, {0}));
     ASSERT_EQ(0, bthread::execution_queue_join(queue_id));
     ASSERT_EQ(expected_result, result);
     ASSERT_TRUE(stopped);
