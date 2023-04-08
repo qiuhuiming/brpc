@@ -727,6 +727,10 @@ private:
     int _h2_stream_id;
 };
 
+static inline bool ShouldReturnEmptyResponse(const Controller* cntl) {
+    return cntl->http_response().status_code() == 204;
+}
+
 class HttpResponseSenderAsDone : public google::protobuf::Closure {
 public:
     HttpResponseSenderAsDone(HttpResponseSender* s) : _sender(std::move(*s)) {}
@@ -781,9 +785,11 @@ HttpResponseSender::~HttpResponseSender() {
         // ^ user did not fill the body yet.
         res->GetDescriptor()->field_count() > 0 &&
         // ^ a pb service
-        !cntl->Failed()) {
+        !cntl->Failed() &&
         // ^ pb response in failed RPC is undefined, no need to convert.
-        
+        !ShouldReturnEmptyResponse(cntl)) {
+        // ^ Some extra http protocol checking
+
         butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->response_attachment());
         if (content_type == HTTP_CONTENT_PROTO) {
             if (!res->SerializeToZeroCopyStream(&wrapper)) {
