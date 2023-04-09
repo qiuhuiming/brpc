@@ -727,7 +727,7 @@ private:
     int _h2_stream_id;
 };
 
-static inline bool ShouldReturnEmptyResponse(const Controller* cntl) {
+static inline bool DoNotReturnBody(const Controller* cntl) {
     return cntl->http_response().status_code() == 204;
 }
 
@@ -787,7 +787,7 @@ HttpResponseSender::~HttpResponseSender() {
         // ^ a pb service
         !cntl->Failed() &&
         // ^ pb response in failed RPC is undefined, no need to convert.
-        !ShouldReturnEmptyResponse(cntl)) {
+        !DoNotReturnBody(cntl)) {
         // ^ Some extra http protocol checking
 
         butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->response_attachment());
