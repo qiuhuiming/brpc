@@ -26,6 +26,7 @@
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/text_format.h>
+#include "brpc/http_status_code.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/files/scoped_file.h"
@@ -70,6 +71,7 @@ int main(int argc, char* argv[]) {
 namespace {
 
 static const std::string EXP_REQUEST = "hello";
+static const std::string EXP_REQUEST_204 = "hello204";
 static const std::string EXP_RESPONSE = "world";
 
 static const std::string MOCK_CREDENTIAL = "mock credential";
@@ -108,6 +110,9 @@ public:
             bthread_usleep(strtol(sleep_ms_str->data(), NULL, 10) * 1000);
         }
         res->set_message(EXP_RESPONSE);
+        if (req->message() == EXP_REQUEST_204) {
+            cntl->http_response().set_status_code(brpc::HTTP_STATUS_NO_CONTENT);
+        }
     }
 };
 
@@ -161,14 +166,14 @@ protected:
         (*process)(msg);
     }
 
-    brpc::policy::HttpContext* MakePostRequestMessage(const std::string& path) {
+    brpc::policy::HttpContext* MakePostRequestMessage(const std::string& path, const std::string& message=EXP_REQUEST) {
         brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().uri().set_path(path);
         msg->header().set_content_type("application/json");
         msg->header().set_method(brpc::HTTP_METHOD_POST);
 
         test::EchoRequest req;
-        req.set_message(EXP_REQUEST);
+        req.set_message(message);
         butil::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
         EXPECT_TRUE(json2pb::ProtoMessageToJson(req, &req_stream, NULL));
         return msg;
@@ -377,6 +382,14 @@ TEST_F(HttpTest, process_request_wrong_method) {
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
     ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
     CheckResponseCode(false, brpc::HTTP_STATUS_NOT_FOUND);
+}
+
+TEST_F(HttpTest, process_request_no_content) {
+    brpc::policy::HttpContext* msg = MakePostRequestMessage("/EchoService/Echo", EXP_REQUEST_204);
+    ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
+    ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
+    CheckResponseCode(false, brpc::HTTP_STATUS_NO_CONTENT);
+    ASSERT_TRUE(msg->body().empty());
 }
 
 TEST_F(HttpTest, process_response_after_eof) {
